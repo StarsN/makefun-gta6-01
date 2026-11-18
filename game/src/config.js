@@ -1,81 +1,43 @@
-// Coral Bay Heat — shared constants: city layout numbers, vehicle models, palette.
-// Everything in the game reads its tuning from here so the world stays consistent.
+// config.js — tuning constants, the car catalogue and the Coral Bay palette.
 
-// City grid: square blocks of BLOCK px separated by roads of ROAD_W px, PITCH apart.
-// East of the grid lies a sand strip and then the sea.
-export const CITY = {
-  pitch: 400,
-  roadW: 96,
-  block: 304,
-  cols: 8,
-  rows: 8,
-  grid: 3296, // 8 * 400 + 96: the built-up square
-  sandX: 3296, // beach sand starts here
-  waterX: 3472, // the sea starts here (land things stop at this line)
-  width: 3952,
-  height: 3296,
-  lane: 23, // lane offset from a road centre line, right-hand traffic
+// World geometry: a grid of city blocks separated by two-lane roads.
+export const BLOCK_PITCH = 430;          // distance between road centrelines
+export const ROAD_W = 104;               // asphalt width
+export const BLOCKS = 8;                 // 8 x 8 blocks
+export const CITY_SIZE = BLOCKS * BLOCK_PITCH + ROAD_W; // roads on both outer edges
+export const BEACH_W = 560;              // sand + shallows east of the last road
+export const WORLD_W = CITY_SIZE + BEACH_W;
+export const WORLD_H = CITY_SIZE;
+
+// Player / camera
+export const PLAYER_RADIUS = 13;
+export const WALK_SPEED = 175;
+export const SPRINT_SPEED = 275;
+export const ENTER_RANGE = 64;           // how close to a car door E works
+
+// Wanted system: heat 0..500, one star per 100.
+export const HEAT_PER_STAR = 100;
+export const MAX_STARS = 5;
+
+// The car catalogue. topSpeed in px/s, accel in px/s^2, hp = body health.
+// kind: 'car' everyday traffic, 'cab' taxi, 'cop' the CBPD Interceptor.
+export const CAR_TYPES = {
+  pico:      { name: 'Pico',          topSpeed: 335, accel: 235, hp: 80,  len: 46, wid: 24, kind: 'car' },
+  marlin:    { name: 'Marlin Sedan',  topSpeed: 395, accel: 265, hp: 110, len: 54, wid: 26, kind: 'car' },
+  ventana:   { name: 'Ventana Coupe', topSpeed: 485, accel: 330, hp: 95,  len: 52, wid: 25, kind: 'car' },
+  tortuga:   { name: 'Tortuga Van',   topSpeed: 305, accel: 195, hp: 160, len: 60, wid: 29, kind: 'car' },
+  brisa:     { name: 'Brisa Compact', topSpeed: 360, accel: 250, hp: 85,  len: 44, wid: 23, kind: 'car' },
+  solcab:    { name: 'Sol Cab',       topSpeed: 380, accel: 255, hp: 105, len: 54, wid: 26, kind: 'cab' },
+  interceptor: { name: 'CBPD Interceptor', topSpeed: 470, accel: 320, hp: 150, len: 55, wid: 27, kind: 'cop' },
 };
+export const TRAFFIC_TYPES = ['pico', 'marlin', 'ventana', 'tortuga', 'brisa', 'solcab'];
+export const CAR_COLORS = ['#e74c3c', '#f39c12', '#f7f3e8', '#39c2d7', '#2e6fd8', '#8e6cc8', '#43b581', '#e77fb0', '#95a5a6', '#34495e', '#ffb347', '#7ed491'];
 
-export const PLAYER = {
-  radius: 11,
-  walkSpeed: 138,
-  sprintSpeed: 224,
-  maxHp: 100,
-  enterRange: 56,
-};
-
-export const WANTED = {
-  maxStars: 5,
-  heatPerStar: 100,
-  decayPerSecond: 5, // heat lost while no officer is watching
-  unseenGrace: 2.5, // seconds out of sight before decay starts
-  bustSeconds: 2.1, // time pinned down before an arrest
-};
-
-// Vehicle models, all invented for Coral Bay. len/wid are the body size in px,
-// topSpeed/accel in px/s and px/s^2, hp is the damage the body takes before it burns.
-export const CAR_MODELS = {
-  pico: { name: 'Pico Hatch', len: 40, wid: 21, topSpeed: 238, accel: 195, hp: 70, cruise: 150 },
-  marlin: { name: 'Marlin Sedan', len: 48, wid: 23, topSpeed: 268, accel: 205, hp: 90, cruise: 168 },
-  ventana: { name: 'Ventana Coupe', len: 47, wid: 23, topSpeed: 344, accel: 305, hp: 80, cruise: 185 },
-  tortuga: { name: 'Tortuga Van', len: 53, wid: 25, topSpeed: 226, accel: 160, hp: 135, cruise: 140 },
-  brisa: { name: 'Brisa Pickup', len: 50, wid: 24, topSpeed: 252, accel: 212, hp: 112, cruise: 158 },
-  taxi: { name: 'Sol Cab', len: 48, wid: 23, topSpeed: 262, accel: 200, hp: 95, cruise: 165 },
-  interceptor: { name: 'CBPD Interceptor', len: 49, wid: 24, topSpeed: 336, accel: 292, hp: 125, cruise: 200 },
-};
-
-export const TRAFFIC_MODELS = ['pico', 'marlin', 'marlin', 'ventana', 'tortuga', 'brisa', 'taxi'];
-export const PARKED_MODELS = ['pico', 'marlin', 'ventana', 'tortuga', 'brisa'];
-
-export const CAR_COLORS = [
-  '#e74c3c', '#f39c12', '#f7e463', '#2ecc71', '#1abc9c', '#3498db',
-  '#9b59b6', '#ecf0f1', '#95a5a6', '#e67e22', '#fd79a8', '#74b9ff',
-];
-
-export const PED_COLORS = [
-  '#ff6b6b', '#feca57', '#48dbfb', '#1dd1a1', '#f368e0', '#ff9f43',
-  '#54a0ff', '#5f27cd', '#c8d6e5', '#10ac84', '#ee5253', '#2e86de',
-];
-
-export const BUILDING_COLORS = [
-  '#f2c094', '#e8907c', '#f7e3ac', '#a8d5ba', '#9fc6e8', '#e6b8d7',
-  '#f4f1de', '#ffb26b', '#cdeac0', '#ffd6a5', '#bdb2ff', '#ffc6ff',
-];
-
-export const COLORS = {
-  ground: '#c9bd9f',
-  sidewalk: '#ded5bd',
-  sidewalkEdge: '#b8ab8d',
-  road: '#45454e',
-  roadEdge: '#33333b',
-  roadLine: '#e9e2c8',
-  crosswalk: '#d8d8d8',
-  park: '#7fae56',
-  sand: '#eed9a0',
-  sandWet: '#e3c98d',
-  water: '#25a3ba',
-  waterDeep: '#177e96',
-  foam: '#eafcff',
-  shadow: 'rgba(43, 32, 20, 0.20)',
+// Sun-soaked pastel palette for the procedurally painted city.
+export const BUILDING_COLORS = ['#ffd9a0', '#ffb59e', '#f9e79f', '#a8e6cf', '#9fd8ef', '#f5b7d0', '#ffe8c9', '#c3f0ca', '#fbc2a0', '#b5d8f7', '#f6d5e8', '#e8e3b0'];
+export const ROOF_COLORS = ['#e07a5f', '#d1603d', '#c96f4a', '#a85751', '#8d6e63', '#b5654d'];
+export const PALETTE = {
+  grass: '#79c26f', grassDark: '#6ab25f', sand: '#f6e3ae', water: '#1f9db4', waterDeep: '#1789a3',
+  asphalt: '#4a4f57', asphaltEdge: '#3c4046', lane: '#f7d774', sidewalk: '#cfc8bb', sidewalkEdge: '#b8b1a1',
+  plaza: '#e8dcc3', pier: '#b08954', pierDark: '#96703f',
 };

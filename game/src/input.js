@@ -1,60 +1,40 @@
-// Keyboard and mouse state for the game. `keys` holds what is down right now, `pressed`
-// holds what went down this frame (main clears it after each update), and the mouse is
-// tracked in screen pixels with its buttons and the world point it aims at.
+// input.js — keyboard and mouse state with edge detection.
+// The game reads `keys` for held controls and `pressed` for one-frame taps;
+// the browser shell clears `pressed` after each update.
 
-export const input = {
-  keys: new Set(),
-  pressed: new Set(),
-  mouse: { x: 0, y: 0, down: false, clicked: false, worldX: 0, worldY: 0 },
-};
+export class Input {
+  constructor(canvas) {
+    this.keys = new Set();
+    this.pressed = new Set();
+    this.mouse = { x: 0, y: 0, down: false, clicked: false };
+    this.canvas = canvas;
+    if (typeof window !== 'undefined' && canvas) this.attach();
+  }
 
-const GAME_KEYS = new Set([
-  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyE', 'KeyF', 'KeyR', 'KeyM', 'KeyP',
-  'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'ShiftLeft', 'ShiftRight',
-]);
+  attach() {
+    window.addEventListener('keydown', (e) => {
+      const k = e.key.toLowerCase();
+      if (!this.keys.has(k)) this.pressed.add(k);
+      this.keys.add(k);
+      if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
+    });
+    window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
+    window.addEventListener('blur', () => { this.keys.clear(); this.mouse.down = false; });
+    const rect = () => this.canvas.getBoundingClientRect();
+    this.canvas.addEventListener('mousemove', (e) => {
+      const r = rect();
+      this.mouse.x = e.clientX - r.left; this.mouse.y = e.clientY - r.top;
+    });
+    this.canvas.addEventListener('mousedown', (e) => {
+      const r = rect();
+      this.mouse.x = e.clientX - r.left; this.mouse.y = e.clientY - r.top;
+      this.mouse.down = true; this.mouse.clicked = true;
+    });
+    window.addEventListener('mouseup', () => { this.mouse.down = false; });
+    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
 
-export function attachInput(window) {
-  window.addEventListener('keydown', (event) => {
-    if (GAME_KEYS.has(event.code)) event.preventDefault();
-    if (!event.repeat) input.pressed.add(event.code);
-    input.keys.add(event.code);
-  });
-  window.addEventListener('keyup', (event) => {
-    input.keys.delete(event.code);
-  });
-  window.addEventListener('blur', () => {
-    input.keys.clear();
-    input.mouse.down = false;
-  });
-}
-
-export function attachMouse(canvas) {
-  canvas.addEventListener('mousemove', (event) => {
-    const rect = canvas.getBoundingClientRect();
-    input.mouse.x = event.clientX - rect.left;
-    input.mouse.y = event.clientY - rect.top;
-  });
-  canvas.addEventListener('mousedown', (event) => {
-    if (event.button === 0) {
-      input.mouse.down = true;
-      input.mouse.clicked = true;
-    }
-  });
-  window.addEventListener('mouseup', (event) => {
-    if (event.button === 0) input.mouse.down = false;
-  });
-  canvas.addEventListener('contextmenu', (event) => event.preventDefault());
-}
-
-export function down(...codes) {
-  return codes.some((code) => input.keys.has(code));
-}
-
-export function justPressed(...codes) {
-  return codes.some((code) => input.pressed.has(code));
-}
-
-export function endFrame() {
-  input.pressed.clear();
-  input.mouse.clicked = false;
+  down(...names) { return names.some((n) => this.keys.has(n)); }
+  tapped(...names) { return names.some((n) => this.pressed.has(n)); }
+  endFrame() { this.pressed.clear(); this.mouse.clicked = false; }
 }

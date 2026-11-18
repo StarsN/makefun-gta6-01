@@ -1,41 +1,32 @@
-// The save file: money, story progress, statistics and the mute setting, kept in
-// localStorage so the title screen can offer Continue. Every access is wrapped — a
-// browser that refuses storage simply plays without saving.
+// save.js — localStorage persistence: cash, story progress, stats, mute.
+// Every access is guarded so the game also runs where storage is unavailable.
 
-const SAVE_KEY = 'coral-bay-heat-save-v1';
+const KEY = 'coral-bay-heat-save-v1';
+
+export function defaultSave() {
+  return {
+    cash: 0,
+    missionsDone: 0,          // index into the mission chain (0 = none done)
+    storyComplete: false,
+    muted: false,
+    stats: { stolen: 0, busts: 0, wasted: 0, shots: 0, missions: 0, distanceKm: 0 },
+  };
+}
 
 export function loadSave() {
   try {
-    const raw = window.localStorage.getItem(SAVE_KEY);
+    const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
-    if (typeof data !== 'object' || data === null) return null;
-    return data;
-  } catch {
-    return null;
-  }
+    const base = defaultSave();
+    return { ...base, ...data, stats: { ...base.stats, ...(data.stats || {}) } };
+  } catch { return null; }
 }
 
-export function writeSave(state) {
-  try {
-    const data = {
-      money: state.money,
-      missionIndex: state.mission.index,
-      storyDone: state.storyDone,
-      stats: state.stats,
-      muted: state.muted,
-      player: { x: Math.round(state.player.x), y: Math.round(state.player.y) },
-    };
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
-  } catch {
-    // Storage unavailable: the game continues unsaved.
-  }
+export function storeSave(save) {
+  try { localStorage.setItem(KEY, JSON.stringify(save)); } catch { /* storage unavailable */ }
 }
 
-export function clearSave() {
-  try {
-    window.localStorage.removeItem(SAVE_KEY);
-  } catch {
-    // Nothing to clear.
-  }
+export function wipeSave() {
+  try { localStorage.removeItem(KEY); } catch { /* storage unavailable */ }
 }

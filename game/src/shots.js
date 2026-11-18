@@ -1,191 +1,108 @@
-// Staged screenshot scenes behind ?shot=title|chase|onfoot|mission, and the ?test=1
-// self-check. Each scene builds on the real world and runs the real simulation
-// forward with scripted keys, so a screenshot is a frame the game itself produced —
-// the chase has real police AI behind the player, the mission scene is a real
-// delivery stage with its timer running.
+// shots.js — deterministic posed scenes for the maker's screenshots.
+// Each scene resets the world in memory (never touching the player's save),
+// warms the simulation up so traffic and crowds settle naturally, places the
+// cast precisely, freezes the frame and renames the page title to
+// "SHOT <name> READY — Coral Bay Heat" so tooling knows the frame is ready.
 
-import { currentObjective } from './missions.js';
-import { makePed } from './people.js';
-import { makeCar } from './vehicles.js';
+import { Rng } from './rng.js';
+import { createCar, createPed } from './entities.js';
+import { roadCenter } from './world.js';
+import { MISSION_DEFS, sms } from './missions.js';
+import { defaultSave } from './save.js';
 
-function givePlayerCar(state, modelId, x, y, angle, color) {
-  const car = makeCar(state, modelId, x, y, angle, { kind: 'mission', color, driver: 'player' });
-  state.player.car = car;
-  state.player.x = x;
-  state.player.y = y;
-  state.player.angle = angle;
+const STEP = 1 / 30;
+
+function warmUp(game, steps) {
+  for (let i = 0; i < steps; i++) game.update(STEP);
+}
+
+function putPlayerInCar(game, typeKey, x, y, angle, speedPx) {
+  const car = createCar(typeKey, x, y, angle, 'player', game.rng);
+  car.driver = 'player';
+  car.renderVx = Math.cos(angle) * speedPx;
+  car.renderVy = Math.sin(angle) * speedPx;
+  car.speed = speedPx;
+  game.cars.push(car);
+  game.player.car = car;
+  game.player.x = x; game.player.y = y;
+  game.player.vx = car.renderVx; game.player.vy = car.renderVy;
   return car;
 }
 
-function policeCar(state, x, y, angle, speed) {
-  const car = makeCar(state, 'interceptor', x, y, angle, { kind: 'police', driver: 'police', color: '#f1f2f6' });
-  car.officerOut = false;
-  car.officerCd = 0;
-  car.vx = Math.cos(angle) * speed;
-  car.vy = Math.sin(angle) * speed;
+function addCopUnit(game, x, y, angle) {
+  const car = createCar('interceptor', x, y, angle, 'police', game.rng);
+  car.color = '#f4f6f8'; car.driver = true;
+  game.cars.push(car);
+  game.units.push({ car, officer: null, stuckT: 0, reverseT: 0, shootT: 1, leaving: false });
   return car;
 }
 
-function runSteps(api, steps, keys) {
-  api.setKeys(keys);
-  for (let i = 0; i < steps; i += 1) api.step(1 / 60);
-  api.setKeys([]);
+function beginScene(game, seed) {
+  game.rng = new Rng(seed);
+  game.resetEntities();
+  game.save = defaultSave(); // in memory only: a screenshot never touches the real save
+  game.state = 'playing';
+  game.playT = 30; // past the control-hint window unless a scene wants it
 }
 
-function stageTitle(state, api) {
-  state.mode = 'title';
-  state.ui.selected = 0;
-  state.camera.x = 3050;
-  state.camera.y = 1500;
-  state.camera.zoom = 0.92;
-  // Life on the beachfront avenue behind the menu.
-  const avenue = state.city.vRoads[8];
-  makeCar(state, 'marlin', avenue - 23, 1180, Math.PI / 2, { kind: 'traffic', driver: 'traffic' })
-    .ai = { axis: 'v', idx: 8, dir: 1, decidedKey: '', turn: null, stuckT: 0 };
-  makeCar(state, 'taxi', avenue + 23, 1900, -Math.PI / 2, { kind: 'traffic', driver: 'traffic' })
-    .ai = { axis: 'v', idx: 8, dir: -1, decidedKey: '', turn: null, stuckT: 0 };
-  for (let i = 0; i < 7; i += 1) {
-    makePed(state, 3330 + state.rng() * 90, 1250 + i * 95 + state.rng() * 30, {});
-  }
-  runSteps(api, 40, []);
-  state.mode = 'title';
-  state.camera.x = 3120;
-  state.camera.y = 1560;
-  state.camera.zoom = 0.92;
-}
-
-function stageChase(state, api) {
-  api.startPlay();
-  const road = state.city.vRoads[6]; // 2448, a long north-south avenue
-  const car = givePlayerCar(state, 'ventana', road - 23, 1560, Math.PI / 2, '#e74c3c');
-  car.vy = 235;
-  policeCar(state, road - 23, 1330, Math.PI / 2, 245);
-  policeCar(state, road + 23, 1240, Math.PI / 2, 250);
-  policeCar(state, road - 23, 1090, Math.PI / 2, 255);
-  const ahead = makeCar(state, 'marlin', road - 23, 2150, Math.PI / 2, { kind: 'traffic', driver: 'traffic', color: '#3498db' });
-  ahead.ai = { axis: 'v', idx: 6, dir: 1, decidedKey: '', turn: null, stuckT: 0 };
-  const oncoming = makeCar(state, 'pico', road + 23, 2300, -Math.PI / 2, { kind: 'traffic', driver: 'traffic', color: '#f39c12' });
-  oncoming.ai = { axis: 'v', idx: 6, dir: -1, decidedKey: '', turn: null, stuckT: 0 };
-  state.wanted.heat = 330; // four stars
-  state.wanted.lastSeenAt = state.time;
-  state.mission.index = 1;
-  state.mission.phase = 'active';
-  state.mission.stage = 1;
-  state.mission.timer = 142;
-  state.messages.push({ from: 'Mari', text: 'They are right behind you, Rae — do NOT stop. Hotel Solana, go!', ttl: 99 });
-  runSteps(api, 62, ['KeyW']);
-  state.camera.x = state.player.x;
-  state.camera.y = state.player.y + 60;
-}
-
-function stageOnfoot(state, api) {
-  api.startPlay();
-  const plaza = state.city.places.plaza;
-  state.player.x = plaza.x - 40;
-  state.player.y = plaza.y + 120;
-  state.player.car = null;
-  for (let i = 0; i < 9; i += 1) {
-    const ped = makePed(state, plaza.x - 120 + state.rng() * 240, plaza.y - 110 + state.rng() * 220, {});
-    ped.tx = plaza.x - 130 + state.rng() * 260;
-    ped.ty = plaza.y - 120 + state.rng() * 240;
-  }
-  makeCar(state, 'ventana', plaza.x + 96, plaza.y + 128, 0, { kind: 'parked', color: '#e74c3c' });
-  makeCar(state, 'marlin', plaza.x - 130, plaza.y + 128, 0, { kind: 'parked', color: '#ecf0f1' });
-  runSteps(api, 46, ['KeyW']);
-  state.camera.x = state.player.x;
-  state.camera.y = state.player.y;
-}
-
-function stageMission(state, api) {
-  api.startPlay();
-  const road = state.city.hRoads[3]; // 1248, the hotel's street
-  const car = givePlayerCar(state, 'marlin', 2230, road + 23, 0, '#2ecc71');
-  car.vx = 215;
-  policeCar(state, 1985, road + 23, 0, 228);
-  const cross = makeCar(state, 'brisa', state.city.vRoads[7], road - 190, Math.PI / 2, { kind: 'traffic', driver: 'traffic', color: '#9b59b6' });
-  cross.ai = { axis: 'v', idx: 7, dir: 1, decidedKey: '', turn: null, stuckT: 0 };
-  state.wanted.heat = 200; // three stars
-  state.wanted.lastSeenAt = state.time;
-  state.mission.index = 1;
-  state.mission.phase = 'active';
-  state.mission.stage = 1;
-  state.mission.timer = 97;
-  state.messages.push({ from: 'Mari', text: 'Hotel Solana. Fast, Rae — and keep the package in one piece.', ttl: 99 });
-  runSteps(api, 58, ['KeyW']);
-  state.camera.x = state.player.x + 120;
-  state.camera.y = state.player.y;
-}
-
-export function stageShot(state, name, api) {
-  if (name === 'chase') stageChase(state, api);
-  else if (name === 'onfoot') stageOnfoot(state, api);
-  else if (name === 'mission') stageMission(state, api);
-  else stageTitle(state, api);
-  state.objective = state.mode === 'play' ? currentObjective(state) : null;
-}
-
-// ----- the self-check ---------------------------------------------------------
-
-export function runSelfTest(state, api) {
-  const results = [];
-  const check = (name, ok, extra = '') => results.push(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ` (${extra})` : ''}`);
-  try {
-    api.startPlay();
-    const player = state.player;
-
-    const startX = player.x;
-    const startY = player.y;
-    runSteps(api, 60, ['KeyW']);
-    check('player walks on foot', Math.hypot(player.x - startX, player.y - startY) > 45, `moved ${Math.round(Math.hypot(player.x - startX, player.y - startY))}px`);
-
-    const parked = state.cars.find((car) => car.kind === 'parked');
-    check('a parked car exists to steal', Boolean(parked));
-    if (parked) {
-      player.x = parked.x + 30;
-      player.y = parked.y;
-      api.press('KeyE');
-      api.step(1 / 60);
-      api.setKeys([]);
-      check('player enters the car with E', player.car === parked);
+export function setupShot(game, name, seed) {
+  const pois = game.world.pois;
+  if (name === 'title') {
+    beginScene(game, seed);
+    game.state = 'title';
+    warmUp(game, 20);
+    game.camera.x = 2080; game.camera.y = 1620; game.camera.zoom = 0.6;
+  } else if (name === 'onfoot') {
+    beginScene(game, seed);
+    const f = game.world.fountain;
+    game.player.x = f.x - 30; game.player.y = f.y + 86;
+    game.player.angle = -0.5;
+    for (let i = 0; i < 4; i++) {
+      const ped = createPed(f.x + game.rng.range(-120, 120), f.y + game.rng.range(50, 130), game.rng);
+      game.peds.push(ped);
     }
-
-    if (player.car) {
-      const carX = player.car.x;
-      const carY = player.car.y;
-      runSteps(api, 72, ['KeyW']);
-      const speed = Math.hypot(player.car.vx, player.car.vy);
-      const moved = Math.hypot(player.car.x - carX, player.car.y - carY);
-      check('car drives under power', speed > 55 && moved > 80, `speed ${Math.round(speed)} moved ${Math.round(moved)}px`);
-      api.press('KeyE');
-      api.step(1 / 60);
-      api.setKeys([]);
-      check('player exits the car with E', player.car === null);
-    }
-
-    api.setMouse(state.view.w / 2 + 120, state.view.h / 2, true);
-    runSteps(api, 24, []);
-    api.setMouse(0, 0, false);
-    check('player fires the pistol', state.stats.shots >= 1, `${state.stats.shots} shots`);
-
-    state.wanted.heat = 200;
-    runSteps(api, 40, []);
-    const police = state.cars.filter((car) => car.kind === 'police');
-    check('wanted level rises and police respond', state.wanted.stars >= 3 && police.length >= 2, `${state.wanted.stars} stars, ${police.length} units`);
-
-    const garage = state.city.places.garage;
-    state.wanted.heat = 0;
-    player.x = garage.x;
-    player.y = garage.y;
-    runSteps(api, 20, []);
-    check('a mission starts at the garage', state.mission.phase === 'active', `mission ${state.mission.index}`);
-
-    check('no page errors', state.errors.length === 0, state.errors.join('; '));
-  } catch (error) {
-    results.push(`FAIL self-test threw: ${error && error.message ? error.message : error}`);
+    warmUp(game, 50);
+    game.player.x = f.x - 30; game.player.y = f.y + 86; game.player.angle = -0.5;
+    game.camera.x = game.player.x; game.camera.y = game.player.y; game.camera.zoom = 1;
+  } else if (name === 'chase') {
+    beginScene(game, seed);
+    const roadY = roadCenter(5);
+    game.player.x = 2280; game.player.y = roadY;
+    warmUp(game, 45);
+    // Rae in a Ventana, eastbound on the pier road, delivery on the banner.
+    putPlayerInCar(game, 'ventana', 2280, roadY + 24, 0, 219);
+    game.mission.active = MISSION_DEFS[1];
+    game.mission.stages = [{ kind: 'goto', x: pois.hotel.x, y: pois.hotel.y, r: 66, label: 'Deliver to Hotel Solana — fast', time: 150 }];
+    game.mission.stageIdx = 0; game.mission.stageT = 141;
+    game.phone.length = 0;
+    sms(game, 'Mari: They are right behind you, Rae — do NOT stop. Hotel Solana, go!');
+    game.heat = 385; game.stars = 4;
+    addCopUnit(game, 2280 - 150, roadY - 24, 0);
+    addCopUnit(game, 2280 - 265, roadY + 24, 0);
+    addCopUnit(game, 2280 - 330, roadY - 24, 0);
+    warmUp(game, 10);
+    const car = game.player.car;
+    car.speed = 219; car.renderVx = 219; car.renderVy = 0;
+    game.heat = 385; game.stars = 4;
+    game.camera.x = car.x + 60; game.camera.y = car.y; game.camera.zoom = 0.95;
+  } else if (name === 'mission') {
+    beginScene(game, seed);
+    const roadY = roadCenter(6);
+    game.player.x = 2375; game.player.y = roadY;
+    warmUp(game, 45);
+    putPlayerInCar(game, 'marlin', 2375, roadY - 24, 0, 175);
+    game.mission.active = MISSION_DEFS[1];
+    game.mission.stages = [{ kind: 'goto', x: pois.hotel.x, y: pois.hotel.y, r: 66, label: 'Deliver to Hotel Solana — fast', time: 150 }];
+    game.mission.stageIdx = 0; game.mission.stageT = 97;
+    game.phone.length = 0;
+    sms(game, 'Mari: Hotel Solana. Fast, Rae — and keep the package in one piece.');
+    warmUp(game, 3); // let the mission system publish the delivery objective
+    const car = game.player.car;
+    car.speed = 175; car.renderVx = 175; car.renderVy = 0;
+    game.mission.stageT = 97;
+    game.camera.x = car.x + 40; game.camera.y = car.y; game.camera.zoom = 0.95;
   }
-  const log = document.getElementById('testlog');
-  const passed = results.every((line) => line.startsWith('PASS'));
-  if (log) log.textContent = results.join('\n');
-  document.title = `${passed ? 'TEST PASS' : 'TEST FAIL'} — Coral Bay Heat`;
-  window.__testResults = results;
+  game.frozen = true;
+  if (game.ctx) game.render(game.ctx);
+  if (typeof document !== 'undefined') document.title = 'SHOT ' + name + ' READY — Coral Bay Heat';
 }
