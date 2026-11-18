@@ -1,108 +1,71 @@
-// shots.js — deterministic posed scenes for the maker's screenshots.
-// Each scene resets the world in memory (never touching the player's save),
-// warms the simulation up so traffic and crowds settle naturally, places the
-// cast precisely, freezes the frame and renames the page title to
-// "SHOT <name> READY — Coral Bay Heat" so tooling knows the frame is ready.
+// Deterministic posed scenes for the maker's screenshots. The parent
+// loads game/index.html?shot=<name>&seed=7, waits for the title to become
+// "SHOT <name> READY — Coral Bay Heat", and captures the frozen frame.
+// Each pose builds a little diorama of real game state — a four-star
+// chase mid-delivery, the title menu, Rae on foot at Coral Plaza, and a
+// delivery drive — then main.js settles it for a few steps and freezes.
 
-import { Rng } from './rng.js';
-import { createCar, createPed } from './entities.js';
-import { roadCenter } from './world.js';
-import { MISSION_DEFS, sms } from './missions.js';
-import { defaultSave } from './save.js';
+import { makeCar } from './vehicles.js';
+import { missionDefs, currentObjective } from './missions.js';
 
-const STEP = 1 / 30;
-
-function warmUp(game, steps) {
-  for (let i = 0; i < steps; i++) game.update(STEP);
-}
-
-function putPlayerInCar(game, typeKey, x, y, angle, speedPx) {
-  const car = createCar(typeKey, x, y, angle, 'player', game.rng);
-  car.driver = 'player';
-  car.renderVx = Math.cos(angle) * speedPx;
-  car.renderVy = Math.sin(angle) * speedPx;
-  car.speed = speedPx;
-  game.cars.push(car);
-  game.player.car = car;
-  game.player.x = x; game.player.y = y;
-  game.player.vx = car.renderVx; game.player.vy = car.renderVy;
+function placePlayerCar(g, model, x, y, angle, kmh, color) {
+  const car = makeCar(g.rng, 'mission', model, x, y, angle, color);
+  car.vx = Math.cos(angle) * (kmh / 0.36);
+  car.vy = Math.sin(angle) * (kmh / 0.36);
+  g.cars.push(car);
+  g.player.car = car;
+  g.player.x = x; g.player.y = y;
+  g.cam.x = x; g.cam.y = y; g.cam.zoom = 1; // open already framed on the car
   return car;
 }
 
-function addCopUnit(game, x, y, angle) {
-  const car = createCar('interceptor', x, y, angle, 'police', game.rng);
-  car.color = '#f4f6f8'; car.driver = true;
-  game.cars.push(car);
-  game.units.push({ car, officer: null, stuckT: 0, reverseT: 0, shootT: 1, leaving: false });
-  return car;
+function trafficNear(g, x, y) {
+  const a = makeCar(g.rng, 'traffic', 'pico', x + 330, y - 42, Math.PI, '#57b06a');
+  const b = makeCar(g.rng, 'traffic', 'tortuga', x - 420, y + 120, 0, '#e6e6e6');
+  a.driverOut = true; b.driverOut = true; // parked scenery: no AI in a frozen frame
+  g.cars.push(a, b);
 }
 
-function beginScene(game, seed) {
-  game.rng = new Rng(seed);
-  game.resetEntities();
-  game.save = defaultSave(); // in memory only: a screenshot never touches the real save
-  game.state = 'playing';
-  game.playT = 30; // past the control-hint window unless a scene wants it
-}
-
-export function setupShot(game, name, seed) {
-  const pois = game.world.pois;
+export function setupShot(g, name) {
+  const s = g.city.spots;
+  g.shotMode = true;
   if (name === 'title') {
-    beginScene(game, seed);
-    game.state = 'title';
-    warmUp(game, 20);
-    game.camera.x = 2080; game.camera.y = 1620; game.camera.zoom = 0.6;
-  } else if (name === 'onfoot') {
-    beginScene(game, seed);
-    const f = game.world.fountain;
-    game.player.x = f.x - 30; game.player.y = f.y + 86;
-    game.player.angle = -0.5;
-    for (let i = 0; i < 4; i++) {
-      const ped = createPed(f.x + game.rng.range(-120, 120), f.y + game.rng.range(50, 130), game.rng);
-      game.peds.push(ped);
-    }
-    warmUp(game, 50);
-    game.player.x = f.x - 30; game.player.y = f.y + 86; game.player.angle = -0.5;
-    game.camera.x = game.player.x; game.camera.y = game.player.y; game.camera.zoom = 1;
-  } else if (name === 'chase') {
-    beginScene(game, seed);
-    const roadY = roadCenter(5);
-    game.player.x = 2280; game.player.y = roadY;
-    warmUp(game, 45);
-    // Rae in a Ventana, eastbound on the pier road, delivery on the banner.
-    putPlayerInCar(game, 'ventana', 2280, roadY + 24, 0, 219);
-    game.mission.active = MISSION_DEFS[1];
-    game.mission.stages = [{ kind: 'goto', x: pois.hotel.x, y: pois.hotel.y, r: 66, label: 'Deliver to Hotel Solana — fast', time: 150 }];
-    game.mission.stageIdx = 0; game.mission.stageT = 141;
-    game.phone.length = 0;
-    sms(game, 'Mari: They are right behind you, Rae — do NOT stop. Hotel Solana, go!');
-    game.heat = 385; game.stars = 4;
-    addCopUnit(game, 2280 - 150, roadY - 24, 0);
-    addCopUnit(game, 2280 - 265, roadY + 24, 0);
-    addCopUnit(game, 2280 - 330, roadY - 24, 0);
-    warmUp(game, 10);
-    const car = game.player.car;
-    car.speed = 219; car.renderVx = 219; car.renderVy = 0;
-    game.heat = 385; game.stars = 4;
-    game.camera.x = car.x + 60; game.camera.y = car.y; game.camera.zoom = 0.95;
-  } else if (name === 'mission') {
-    beginScene(game, seed);
-    const roadY = roadCenter(6);
-    game.player.x = 2375; game.player.y = roadY;
-    warmUp(game, 45);
-    putPlayerInCar(game, 'marlin', 2375, roadY - 24, 0, 175);
-    game.mission.active = MISSION_DEFS[1];
-    game.mission.stages = [{ kind: 'goto', x: pois.hotel.x, y: pois.hotel.y, r: 66, label: 'Deliver to Hotel Solana — fast', time: 150 }];
-    game.mission.stageIdx = 0; game.mission.stageT = 97;
-    game.phone.length = 0;
-    sms(game, 'Mari: Hotel Solana. Fast, Rae — and keep the package in one piece.');
-    warmUp(game, 3); // let the mission system publish the delivery objective
-    const car = game.player.car;
-    car.speed = 175; car.renderVx = 175; car.renderVy = 0;
-    game.mission.stageT = 97;
-    game.camera.x = car.x + 40; game.camera.y = car.y; game.camera.zoom = 0.95;
+    g.state = 'title';
+    g.cam.x = s.plaza.x; g.cam.y = s.plaza.y;
+    return true;
   }
-  game.frozen = true;
-  if (game.ctx) game.render(game.ctx);
-  if (typeof document !== 'undefined') document.title = 'SHOT ' + name + ' READY — Coral Bay Heat';
+  g.state = 'play';
+  if (name === 'onfoot') {
+    g.player.x = s.plaza.x + 26; g.player.y = s.plaza.y + 96;
+    g.player.angle = -0.6;
+    g.cam.x = g.player.x; g.cam.y = g.player.y;
+    return true;
+  }
+  if (name === 'chase') {
+    const y = 1500 - 21; // eastbound lane of the hotel row
+    placePlayerCar(g, 'ventana', 1250, y, 0, 79, '#d94f3d');
+    for (const [dx, dy] of [[-195, -16], [-310, 14], [-445, -30]]) {
+      const cop = makeCar(g.rng, 'police', 'interceptor', 1250 + dx, y + dy, 0, '#eef1f4');
+      cop.vx = 190; cop.officerOut = false;
+      g.cars.push(cop);
+    }
+    trafficNear(g, 1250, y);
+    g.heat = 320; g.lastSeenT = 0; // four stars, and they can see her
+    const defs = missionDefs(g);
+    g.mission = { def: defs[1], steps: defs[1].build({}), idx: 1, timerLeft: 141, rt: {}, story: true };
+    g.talk('Mari', 'They are right behind you, Rae — do NOT stop. Hotel Solana, go!', 9999);
+    g.objective = currentObjective(g);
+    return true;
+  }
+  if (name === 'mission') {
+    const y = 1500 - 21;
+    placePlayerCar(g, 'marlin', 1500, y, 0, 63, '#3d7bd9');
+    trafficNear(g, 1600, y);
+    const defs = missionDefs(g);
+    g.mission = { def: defs[1], steps: defs[1].build({}), idx: 1, timerLeft: 97, rt: {}, story: true };
+    g.talk('Mari', 'Hotel Solana. Fast, Rae — and keep the package in one piece.', 9999);
+    g.objective = currentObjective(g);
+    return true;
+  }
+  return false;
 }

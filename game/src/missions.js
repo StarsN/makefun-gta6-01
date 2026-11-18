@@ -1,224 +1,213 @@
-// missions.js — the story of Coral Bay Heat: five jobs from fixer Marisol
-// "Mari" Vega, run from her garage. Each mission is a small state machine of
-// stages (go somewhere, steal a marked car, deliver against the clock,
-// collect the drops, one last fare under a locked three-star heat), with
-// SMS briefings on Rae's phone and a live objective for the HUD banner.
+// Mari Vega's jobs: a five-mission story chain run out of Vega's Garage,
+// plus endless side deliveries once the story is done. Missions are small
+// step machines — reach a place, take a car, beat a clock — with SMS
+// intros, on-screen objectives and cash rewards.
 
-import { dist } from './rng.js';
-import { createCar } from './entities.js';
+import { dist } from './random.js';
+import { makeCar } from './vehicles.js';
+import { makePed } from './people.js';
+import { floatText } from './fx.js';
 
-export const MISSION_DEFS = [
-  {
-    id: 'first-wheels', title: 'First Wheels', reward: 150,
-    intro: ['Mari: Rae. A Ventana coupe is sitting in the east lot, keys in. Bring it to my garage.', 'Mari: Clean hands, quick feet. Go.'],
-    done: 'Mari: She runs sweet. $150 wired. You drive like you mean it.',
-  },
-  {
-    id: 'special-delivery', title: 'Special Delivery', reward: 300,
-    intro: ['Mari: Package at the warehouse dock. Then Hotel Solana, fast.', 'Mari: The guest tips well when the bag is early.'],
-    done: 'Mari: Early and intact. $300. The Solana loves us now.',
-  },
-  {
-    id: 'borrowed-ride', title: 'Borrowed Ride', reward: 450,
-    intro: ['Mari: A Marlin sedan in the west lot belongs to a man who owes me.', 'Mari: Take it. Bring it home unbent, amor.'],
-    done: 'Mari: Not a scratch worth naming. $450. He will understand.',
-  },
-  {
-    id: 'three-drops', title: 'Three Drops', reward: 600,
-    intro: ['Mari: Three cash drops: Palmetto Park, Coral Plaza, the pier end.', 'Mari: All three before the tide turns. Clock is running.'],
-    done: 'Mari: All three, dry and counted. $600. Beautiful work.',
-  },
-  {
-    id: 'the-long-fare', title: 'The Long Fare', reward: 900,
-    intro: ['Mari: My cousin Leo is at Hotel Solana. The CBPD wants a word with him.', 'Mari: Get him to the pier boat. Do NOT stop, Rae.'],
-    done: 'Mari: He made the boat. We are square, and then some. $900.',
-  },
-];
-
-export function initMissions(game) {
-  game.mission = { active: null, stageIdx: 0, stageT: 0, collect: [], failed: false };
-  game.phone = [];
-  game.missionHeatFloor = 0;
-  game.objective = null;
+export function missionDefs(g) {
+  const s = g.city.spots;
+  const lot = g.city.lots[0];
+  const lotC = { x: lot.x + lot.w / 2, y: lot.y + lot.h / 2 };
+  return [
+    {
+      name: 'First Wheels', reward: 150, timer: 0,
+      intro: ['Rae, it is Mari. I need a car moved and I need it clean.', 'The blue Marlin at my garage. Park it at the Palma Court lot. Easy money.'],
+      outro: ['Clean work. $150 wired. Come by the garage, there is more.'],
+      build(rt) {
+        rt.car = makeCar(g.rng, 'mission', 'marlin', s.garageDoor.x, s.garageDoor.y + 16, Math.PI, '#3d7bd9');
+        g.cars.push(rt.car);
+        return [
+          { type: 'enterCar', car: rt.car, x: rt.car.x, y: rt.car.y, text: "Get in Mari's Marlin" },
+          { type: 'goto', x: lotC.x, y: lotC.y, r: 46, needCar: rt.car, text: 'Park the Marlin at the Palma Court lot' },
+        ];
+      },
+    },
+    {
+      name: 'Special Delivery', reward: 300, timer: 150,
+      intro: ['A package at Pierpoint Storage needs to reach Hotel Solana.', 'Do not be late, and do not open it. Especially do not open it.'],
+      outro: ['On time and sealed. $300. You are making me look good, Rae.'],
+      build() {
+        return [
+          { type: 'goto', x: s.warehouse.x, y: s.warehouse.y, r: 30, text: 'Pick up the package at Pierpoint Storage', pickup: true },
+          { type: 'goto', x: s.hotel.x, y: s.hotel.y, r: 34, text: 'Deliver to Hotel Solana — fast' },
+        ];
+      },
+    },
+    {
+      name: 'Borrowed Ride', reward: 450, timer: 0,
+      intro: ['A Ventana at the beach lot has an owner who owes me.', 'Take it. Bring it to the garage. If the CBPD notice, lose them or do not. I pay either way.'],
+      outro: ['Ha! He will be walking for a month. $450, as agreed.'],
+      build(rt) {
+        rt.car = makeCar(g.rng, 'mission', 'ventana', s.beachLot.x + 26, s.beachLot.y - 30, -Math.PI / 2, '#e8b93c');
+        g.cars.push(rt.car);
+        return [
+          { type: 'enterCar', car: rt.car, x: rt.car.x, y: rt.car.y, text: 'Steal the yellow Ventana at the beach lot', hot: 200 },
+          { type: 'goto', x: s.garage.x, y: s.garage.y, r: 40, needCar: rt.car, text: 'Bring the Ventana to Vega\'s Garage' },
+        ];
+      },
+    },
+    {
+      name: 'Three Drops', reward: 600, timer: 0,
+      intro: ['Three cash drops, three corners of the bay. Palma Park, the pier, Coral General.', 'Pick them all up. No questions, no receipts.'],
+      outro: ['All three. You know this city like a tide chart. $600.'],
+      build() {
+        return [
+          { type: 'goto', x: s.park.x, y: s.park.y, r: 30, text: 'Drop one: Palma Park', pickup: true },
+          { type: 'goto', x: s.pierEnd.x, y: s.pierEnd.y, r: 30, text: 'Drop two: end of the pier', pickup: true },
+          { type: 'goto', x: s.hospital.x, y: s.hospital.y, r: 30, text: 'Drop three: Coral General entrance', pickup: true },
+        ];
+      },
+    },
+    {
+      name: 'The Long Fare', reward: 900, timer: 240,
+      intro: ['Last one, Rae. A guest at Hotel Solana needs the pier, and half the CBPD wants a word with him.', 'Three stars of trouble, door to door. Get him there and we are even with this city.'],
+      outro: ['He made his boat. We made our name. $900 — and Rae? The garage is yours whenever you need it.'],
+      build(rt) {
+        const cab = makeCar(g.rng, 'mission', 'solcab', s.hotel.x + 30, s.hotel.y + 24, Math.PI, '#e8b93c');
+        g.cars.push(cab);
+        rt.car = cab;
+        rt.passenger = makePed(g.rng, s.hotel.x, s.hotel.y, 'ped');
+        g.peds.push(rt.passenger);
+        return [
+          { type: 'goto', x: s.hotel.x, y: s.hotel.y, r: 36, text: 'Pick up the guest at Hotel Solana', board: true },
+          { type: 'goto', x: s.pierEnd.x, y: s.pierEnd.y, r: 34, text: 'Get him to the end of the pier' },
+        ];
+      },
+    },
+  ];
 }
 
-export function sms(game, text) {
-  game.phone.push({ text, t: game.time });
-  if (game.phone.length > 6) game.phone.shift();
-  game.sound.phoneBuzz();
+function sideJob(g) {
+  const s = g.city.spots;
+  const places = [
+    ['Coral General', s.hospital], ['Hotel Solana', s.hotel], ['Pierpoint Storage', s.warehouse],
+    ['the pier', s.pierEnd], ['CBPD HQ', s.police], ['Coral Plaza', s.plaza],
+  ];
+  const a = places[Math.floor(g.rng() * places.length)];
+  let b = places[Math.floor(g.rng() * places.length)];
+  if (b === a) b = places[(places.indexOf(a) + 2) % places.length];
+  return {
+    name: 'Side Work', reward: 200, timer: 170,
+    intro: [`Quick one: a parcel at ${a[0]} goes to ${b[0]}. Clock is running.`],
+    outro: ['Done and dusted. $200.'],
+    build() {
+      return [
+        { type: 'goto', x: a[1].x, y: a[1].y, r: 32, text: `Pick up at ${a[0]}`, pickup: true },
+        { type: 'goto', x: b[1].x, y: b[1].y, r: 34, text: `Deliver to ${b[0]}` },
+      ];
+    },
+  };
 }
 
-function garagePoint(game) { return game.world.pois.garage; }
+export function startMission(g) {
+  const defs = missionDefs(g);
+  const def = g.save.missionDone < defs.length ? defs[g.save.missionDone] : sideJob(g);
+  const rt = { car: null, passenger: null };
+  const steps = def.build(rt);
+  g.mission = { def, steps, idx: 0, timerLeft: def.timer || 0, rt, story: g.save.missionDone < defs.length };
+  for (const line of def.intro) g.say('Mari', line);
+  g.talk('Mari', def.intro[0], 5);
+  g.sound.phone();
+}
 
-function spawnMissionCar(game, typeKey, spotIdx) {
-  // Find a free parking spot at or after the requested one: a target car
-  // stacked inside somebody's parked runabout helps nobody.
-  const spots = game.world.parkSpots;
-  let spot = spots[spotIdx % spots.length];
-  for (let i = 0; i < spots.length; i++) {
-    const candidate = spots[(spotIdx + i) % spots.length];
-    const taken = game.cars.some((c) => Math.hypot(c.x - candidate.x, c.y - candidate.y) < 46);
-    if (!taken) { spot = candidate; break; }
+export function failMission(g, why) {
+  if (!g.mission) return;
+  g.say('Mari', why || 'That job fell apart. Come back to the garage and we will run it again.');
+  g.sound.fail();
+  if (g.mission.rt.car && g.mission.rt.car.kind === 'mission') g.mission.rt.car.kind = 'parked';
+  if (g.mission.rt.passenger) g.mission.rt.passenger.state = 'wander';
+  g.heatFloor = 0;
+  g.mission = null;
+}
+
+function completeMission(g) {
+  const m = g.mission;
+  g.player.cash += m.def.reward;
+  g.save.cash = g.player.cash;
+  g.save.stats.earned += m.def.reward;
+  if (m.story) g.save.missionDone += 1;
+  g.persist();
+  for (const line of m.def.outro) g.say('Mari', line);
+  g.sound.stinger(); g.sound.cash();
+  floatText(g, g.player.x, g.player.y - 30, `+$${m.def.reward}`, '#7be382');
+  if (m.rt.passenger) { m.rt.passenger.dead = false; m.rt.passenger.hp = 30; m.rt.passenger.x = g.city.spots.pierEnd.x; m.rt.passenger.y = g.city.spots.pierEnd.y; m.rt.passenger.state = 'wander'; }
+  if (m.rt.car && m.rt.car.kind === 'mission') m.rt.car.kind = 'parked';
+  g.heatFloor = 0;
+  g.mission = null;
+}
+
+export function onPlayerEnterCar(g, car) {
+  const m = g.mission;
+  if (!m) return;
+  const step = m.steps[m.idx];
+  if (step && step.type === 'enterCar' && step.car === car) {
+    if (step.hot) g.heat = Math.max(g.heat, step.hot); // the owner called it in
+    advanceStep(g);
   }
-  const car = createCar(typeKey, spot.x, spot.y, spot.angle, 'mission', game.rng);
-  car.hot = true;
-  game.cars.push(car);
-  return car;
 }
 
-function startMission(game, idx) {
-  const def = MISSION_DEFS[idx];
-  const m = game.mission;
-  m.active = def; m.stageIdx = 0; m.failed = false; m.collect = []; m.fareWarned = false;
-  for (const line of def.intro) sms(game, line);
-  game.sound.stinger(false);
-  const pois = game.world.pois;
-  if (def.id === 'first-wheels') {
-    m.targetCar = spawnMissionCar(game, 'ventana', 3);
-    m.stages = [
-      { kind: 'steal', car: m.targetCar, label: 'Steal the Ventana coupe' },
-      { kind: 'deliverCar', car: m.targetCar, x: pois.garage.x, y: pois.garage.y, r: 74, label: 'Bring it to Vega\'s Garage' },
-    ];
-  } else if (def.id === 'special-delivery') {
-    m.stages = [
-      { kind: 'goto', x: pois.warehouse.x, y: pois.warehouse.y, r: 62, label: 'Pick up the package at the warehouse' },
-      { kind: 'goto', x: pois.hotel.x, y: pois.hotel.y, r: 66, label: 'Deliver to Hotel Solana — fast', time: 150 },
-    ];
-  } else if (def.id === 'borrowed-ride') {
-    m.targetCar = spawnMissionCar(game, 'marlin', 12);
-    m.stages = [
-      { kind: 'steal', car: m.targetCar, label: 'Steal the Marlin sedan' },
-      { kind: 'deliverCar', car: m.targetCar, x: pois.garage.x, y: pois.garage.y, r: 74, label: 'Deliver it to Vega\'s Garage unbent' },
-    ];
-  } else if (def.id === 'three-drops') {
-    const pier = game.world.pier;
-    m.collect = [
-      { x: pois.park.x, y: pois.park.y, got: false, name: 'Palmetto Park' },
-      { x: game.world.fountain.x, y: game.world.fountain.y + 58, got: false, name: 'Coral Plaza' },
-      { x: pier.x + pier.w - 30, y: pier.y + pier.h / 2, got: false, name: 'the pier end' },
-    ];
-    m.stages = [{ kind: 'collect', label: 'Collect the cash drops', time: 260 }];
-  } else if (def.id === 'the-long-fare') {
-    m.stages = [
-      { kind: 'goto', x: pois.hotel.x, y: pois.hotel.y, r: 66, label: 'Pick up Leo at Hotel Solana' },
-      { kind: 'goto', x: game.world.pier.x + game.world.pier.w - 30, y: game.world.pier.y + 26, r: 60, label: 'Get Leo to the pier boat — do NOT stop', heatFloor: 300 },
-    ];
-  }
-  m.stageT = m.stages[0].time || 0;
+function advanceStep(g) {
+  const m = g.mission;
+  m.idx += 1;
+  g.sound.pickup();
+  if (m.idx >= m.steps.length) completeMission(g);
 }
 
-function failMission(game, why) {
-  const m = game.mission;
-  sms(game, 'Mari: ' + why);
-  cleanupMission(game);
-  m.active = null; m.failed = true;
-  game.missionHeatFloor = 0;
-  game.sound.stinger(false);
-}
-
-function cleanupMission(game) {
-  const m = game.mission;
-  if (m.targetCar && game.player.car !== m.targetCar && game.cars.includes(m.targetCar)) {
-    game.cars.splice(game.cars.indexOf(m.targetCar), 1);
-  }
-  m.targetCar = null; m.collect = [];
-}
-
-function completeMission(game) {
-  const def = game.mission.active;
-  game.save.cash += def.reward;
-  game.save.missionsDone++;
-  game.save.stats.missions++;
-  sms(game, def.done);
-  game.sound.stinger(true);
-  game.sound.cash();
-  cleanupMission(game);
-  game.mission.active = null;
-  game.missionHeatFloor = 0;
-  if (game.save.missionsDone >= MISSION_DEFS.length) {
-    game.save.storyComplete = true;
-    game.showStoryComplete();
-  }
-  game.persist();
-}
-
-export function updateMissions(game, dt) {
-  const m = game.mission;
-  const p = game.player;
-  const pois = game.world.pois;
-  if (!m.active) {
-    if (game.save.missionsDone < MISSION_DEFS.length) {
-      const g = garagePoint(game);
-      game.objective = { title: 'Vega\'s Garage', text: 'See Mari at Vega\'s Garage — next job: ' + MISSION_DEFS[game.save.missionsDone].title, x: g.x, y: g.y };
-      if (dist(p.x, p.y, g.x, g.y) < 52 && game.state === 'playing') startMission(game, game.save.missionsDone);
-    } else {
-      game.objective = { title: 'Coral Bay', text: 'Story complete — the city is yours. Cause some noise.', x: p.x, y: p.y };
-    }
+export function updateMissions(g, dt) {
+  const m = g.mission;
+  if (!m) {
+    // Standing at Mari's marker with no job on: she hands over the next one.
+    const s = g.city.spots;
+    const px = g.player.car ? g.player.car.x : g.player.x, py = g.player.car ? g.player.car.y : g.player.y;
+    if (dist(px, py, s.garage.x, s.garage.y) < 42) startMission(g);
     return;
   }
-  const stage = m.stages[m.stageIdx];
-  if (!stage) { completeMission(game); return; }
-  // Timers and heat floors ride on the stage.
-  if (stage.time) {
-    m.stageT -= dt;
-    if (m.stageT <= 0) { failMission(game, 'Too slow, amor. Come back to the garage and we try again.'); return; }
+  if (m.def.timer) {
+    m.timerLeft -= dt;
+    if (m.timerLeft <= 0) { failMission(g, 'Out of time. The job is off — come back to the garage.'); return; }
   }
-  game.missionHeatFloor = stage.heatFloor || 0;
-  if (stage.heatFloor && m.stageIdx === 1 && m.active.id === 'the-long-fare' && !m.fareWarned) {
-    m.fareWarned = true;
-    sms(game, 'Leo: They are right behind you, Rae — do NOT stop. Pier, go!');
-  }
-
-  let advance = false;
-  let obj = { title: m.active.title, text: stage.label, timeLeft: stage.time ? m.stageT : null };
-  if (stage.kind === 'goto') {
-    obj.x = stage.x; obj.y = stage.y;
-    if (dist(p.x, p.y, stage.x, stage.y) < stage.r) advance = true;
-  } else if (stage.kind === 'steal') {
-    obj.x = stage.car.x; obj.y = stage.car.y;
-    if (stage.car.wrecked) { failMission(game, 'The car is scrap. Come back to the garage, we start over.'); return; }
-    if (p.car === stage.car) advance = true;
-  } else if (stage.kind === 'deliverCar') {
-    obj.x = stage.x; obj.y = stage.y;
-    if (stage.car.wrecked) { failMission(game, 'The car is scrap. Come back to the garage, we start over.'); return; }
-    if (p.car === stage.car && dist(p.x, p.y, stage.x, stage.y) < stage.r) {
-      if (m.active.id === 'borrowed-ride' && stage.car.hp < stage.car.maxHp * 0.25) {
-        failMission(game, 'You brought me a wreck, not a car. Again, and gently this time.');
-        return;
+  if (m.def.name === 'The Long Fare') g.heatFloor = 300;
+  const step = m.steps[m.idx];
+  if (!step) return;
+  if (step.type === 'goto') {
+    if (step.needCar && g.player.car !== step.needCar) {
+      if (step.needCar.dead) { failMission(g, 'The car is wrecked. That job is done for.'); return; }
+    } else if (dist(g.player.x, g.player.y, step.x, step.y) < step.r || (g.player.car && dist(g.player.car.x, g.player.car.y, step.x, step.y) < step.r)) {
+      if (step.pickup) { g.sound.pickup(); floatText(g, step.x, step.y - 18, 'PICKED UP', '#ffe27a'); }
+      if (step.board && m.rt.passenger) {
+        m.rt.passenger.dead = true; // he climbs in; the ped leaves the street
+        g.talk('Guest', 'The pier. Fast, please — and keep the package in one piece.', 4.5);
       }
-      advance = true;
-    }
-  } else if (stage.kind === 'collect') {
-    const next = m.collect.find((c) => !c.got);
-    if (!next) advance = true;
-    else {
-      obj.x = next.x; obj.y = next.y;
-      obj.text = 'Collect the cash drops (' + m.collect.filter((c) => c.got).length + '/3) — next: ' + next.name;
-      if (dist(p.x, p.y, next.x, next.y) < 46) {
-        next.got = true;
-        game.sound.cash();
-        sms(game, 'Drop secured: ' + next.name + ' (' + m.collect.filter((c) => c.got).length + '/3)');
-        if (m.collect.every((c) => c.got)) advance = true;
-      }
+      advanceStep(g);
     }
   }
-  game.objective = obj;
-  if (advance) {
-    m.stageIdx++;
-    const nextStage = m.stages[m.stageIdx];
-    if (!nextStage) completeMission(game);
-    else {
-      m.stageT = nextStage.time || 0;
-      game.sound.pickup();
-      if (m.active.id === 'special-delivery' && m.stageIdx === 1) sms(game, 'Mari: Package is in. Hotel Solana, fast · do not dent the bag.');
-      if (m.active.id === 'the-long-fare' && m.stageIdx === 1) sms(game, 'Leo: I am in! Drive, drive!');
-    }
-  }
+  if (step.type === 'enterCar' && step.car.dead) failMission(g, 'The car is wrecked. That job is done for.');
 }
 
-// Where the beacon / minimap blip for a mission target car sits (rendering aid).
-export function missionCarMark(game) {
-  const m = game.mission;
-  if (m.active && m.targetCar && game.player.car !== m.targetCar) return m.targetCar;
-  return null;
+// What the HUD banner and minimap show right now.
+export function currentObjective(g) {
+  const s = g.city.spots;
+  const m = g.mission;
+  if (!m) {
+    const defs = missionDefs(g);
+    const next = g.save.missionDone < defs.length ? defs[g.save.missionDone].name : 'Side Work';
+    const px = g.player.car ? g.player.car.x : g.player.x, py = g.player.car ? g.player.car.y : g.player.y;
+    const d = Math.round(dist(px, py, s.garage.x, s.garage.y) / 10);
+    return { title: '', text: `See Mari at Vega's Garage — next job: ${next} · ${d}m`, x: s.garage.x, y: s.garage.y, timerLeft: 0, garage: true };
+  }
+  const step = m.steps[m.idx];
+  if (!step) return null;
+  let text = step.text;
+  let tx = step.x, ty = step.y;
+  if (step.type === 'goto' && step.needCar && g.player.car !== step.needCar) {
+    text = `Get back in the ${step.needCar.spec.name}`;
+    tx = step.needCar.x; ty = step.needCar.y;
+  }
+  if (step.type === 'enterCar') { tx = step.car.x; ty = step.car.y; }
+  const px = g.player.car ? g.player.car.x : g.player.x, py = g.player.car ? g.player.car.y : g.player.y;
+  return { title: m.def.name.toUpperCase(), text, x: tx, y: ty, d: Math.round(dist(px, py, tx, ty) / 10), timerLeft: m.def.timer ? m.timerLeft : 0, garage: false };
 }

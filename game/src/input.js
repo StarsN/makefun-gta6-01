@@ -1,40 +1,34 @@
-// input.js — keyboard and mouse state with edge detection.
-// The game reads `keys` for held controls and `pressed` for one-frame taps;
-// the browser shell clears `pressed` after each update.
+// Keyboard and mouse state. The game reads this object; the self-test can
+// write into it directly, which is why listeners only fill it in.
 
-export class Input {
-  constructor(canvas) {
-    this.keys = new Set();
-    this.pressed = new Set();
-    this.mouse = { x: 0, y: 0, down: false, clicked: false };
-    this.canvas = canvas;
-    if (typeof window !== 'undefined' && canvas) this.attach();
-  }
+export const input = {
+  keys: new Set(),
+  mouseX: 0,
+  mouseY: 0,
+  mouseDown: false,
+  pressed: new Set(), // codes that went down since the last frame step
+};
 
-  attach() {
-    window.addEventListener('keydown', (e) => {
-      const k = e.key.toLowerCase();
-      if (!this.keys.has(k)) this.pressed.add(k);
-      this.keys.add(k);
-      if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
-    });
-    window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
-    window.addEventListener('blur', () => { this.keys.clear(); this.mouse.down = false; });
-    const rect = () => this.canvas.getBoundingClientRect();
-    this.canvas.addEventListener('mousemove', (e) => {
-      const r = rect();
-      this.mouse.x = e.clientX - r.left; this.mouse.y = e.clientY - r.top;
-    });
-    this.canvas.addEventListener('mousedown', (e) => {
-      const r = rect();
-      this.mouse.x = e.clientX - r.left; this.mouse.y = e.clientY - r.top;
-      this.mouse.down = true; this.mouse.clicked = true;
-    });
-    window.addEventListener('mouseup', () => { this.mouse.down = false; });
-    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-  }
-
-  down(...names) { return names.some((n) => this.keys.has(n)); }
-  tapped(...names) { return names.some((n) => this.pressed.has(n)); }
-  endFrame() { this.pressed.clear(); this.mouse.clicked = false; }
+export function bindInput(target, canvas) {
+  target.addEventListener('keydown', (e) => {
+    if (!input.keys.has(e.code)) input.pressed.add(e.code);
+    input.keys.add(e.code);
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+  });
+  target.addEventListener('keyup', (e) => input.keys.delete(e.code));
+  target.addEventListener('blur', () => { input.keys.clear(); input.mouseDown = false; });
+  canvas.addEventListener('mousemove', (e) => {
+    const r = canvas.getBoundingClientRect();
+    input.mouseX = e.clientX - r.left;
+    input.mouseY = e.clientY - r.top;
+  });
+  canvas.addEventListener('mousedown', (e) => { if (e.button === 0) input.mouseDown = true; });
+  target.addEventListener('mouseup', (e) => { if (e.button === 0) input.mouseDown = false; });
 }
+
+export const down = (code) => input.keys.has(code);
+export function justPressed(code) {
+  if (input.pressed.has(code)) { input.pressed.delete(code); return true; }
+  return false;
+}
+export function clearPressed() { input.pressed.clear(); }

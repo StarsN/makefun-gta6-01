@@ -1,32 +1,38 @@
-// save.js — localStorage persistence: cash, story progress, stats, mute.
-// Every access is guarded so the game also runs where storage is unavailable.
+// localStorage persistence: cash, story progress, lifetime stats, mute.
+// Storage can throw (private mode, sandboxed frames), so every access is
+// wrapped and the game simply plays unsaved when it has to.
 
-const KEY = 'coral-bay-heat-save-v1';
+import { STORE_KEY } from './config.js';
 
 export function defaultSave() {
   return {
     cash: 0,
-    missionsDone: 0,          // index into the mission chain (0 = none done)
-    storyComplete: false,
+    missionDone: 0,      // how many story missions are finished
     muted: false,
-    stats: { stolen: 0, busts: 0, wasted: 0, shots: 0, missions: 0, distanceKm: 0 },
+    stats: { earned: 0, stolen: 0, busted: 0, wasted: 0, shots: 0, distance: 0 },
   };
 }
 
 export function loadSave() {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = globalThis.localStorage.getItem(STORE_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
     const base = defaultSave();
     return { ...base, ...data, stats: { ...base.stats, ...(data.stats || {}) } };
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
-export function storeSave(save) {
-  try { localStorage.setItem(KEY, JSON.stringify(save)); } catch { /* storage unavailable */ }
+export function hasSave() {
+  try { return !!globalThis.localStorage.getItem(STORE_KEY); } catch { return false; }
+}
+
+export function writeSave(save) {
+  try { globalThis.localStorage.setItem(STORE_KEY, JSON.stringify(save)); } catch { /* unsaved session */ }
 }
 
 export function wipeSave() {
-  try { localStorage.removeItem(KEY); } catch { /* storage unavailable */ }
+  try { globalThis.localStorage.removeItem(STORE_KEY); } catch { /* nothing to wipe */ }
 }
