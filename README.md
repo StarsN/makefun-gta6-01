@@ -47,9 +47,10 @@ http://localhost:8080). Desktop Chrome, keyboard and mouse.
 
 Everything — city, characters, vehicles, names, story, art and sound — is original to this
 entry and generated in code at runtime. No assets are loaded; the whole game is the handful of
-ES modules under `game/src/`, one job each: `city.js` builds the world, `vehicles.js` drives
-the traffic, `police.js` runs the wanted system, `missions.js` holds the story, `render.js`
-draws the world, `hud.js` draws the interface, and `main.js` ties it together.
+ES modules under `game/src/`, one job each: `world.js` builds the city, `entities.js` runs the
+traffic and crowds, `police.js` runs the wanted system, `missions.js` holds the story,
+`player.js` walks and drives Rae, `render.js` draws the world, `hud.js` draws the interface,
+and `main.js` ties it together.
 
 ## Handing it in
 
