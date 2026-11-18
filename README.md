@@ -63,3 +63,10 @@ mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
 Screenshots in `screenshots/` are real renders of this game in a browser, staged through the
 game's own `?shot=` scenes (see `shots.json`).
+
+## Development
+
+Coral Bay Heat was designed and built iteratively with an AI coding agent under make.fun's
+recorded-build rules. The city, traffic, police AI, missions, art and audio are all generated
+at runtime from the ES modules in `game/src/` — there are no downloaded assets and no build
+step, so the game that ships is exactly the code in this repository.
